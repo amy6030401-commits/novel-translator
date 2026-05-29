@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小說翻譯器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- 引入 Google API 客户端库和 Google Identity Services JS SDK (保留，以便未來連結) -->
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Noto Serif TC', 'serif'],
+                    },
+                    colors: {
+                        rofan: {
+                            light: '#fdfbf7',
+                            dark: '#1a1a1e',
+                            primary: '#c9a265', 
+                            secondary: '#8a6a4b',
+                            accent: '#e6c891'
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'slide-in': 'slideIn 0.3s forwards',
+                    },
+                    keyframes: {
+                        slideIn: {
+                            '0%': { transform: 'translateX(-100%)' },
+                            '100%': { transform: 'translateX(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #c9a265; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #8a6a4b; }
+        
+        .reading-text {
+            font-family: 'Noto Serif TC', serif;
+            line-height: 1.8;
+            transition: font-size 0.3s ease;
+        }
+
+        .sync-scrolling { pointer-events: none; }
+        
+        [contenteditable="true"]:focus {
+            outline: none;
+            box-shadow: inset 0 0 0 1.5px rgba(201, 162, 101, 0.4);
+            border-radius: 0.5rem;
+            background-color: rgba(201, 162, 101, 0.02);
+        }
+
+        /* Drag and drop zone highlighting */
+        .drag-over {
+            border-color: #c9a265 !important;
+            background-color: rgba(201, 162, 101, 0.05) !important;
+        }
+
+        ::selection { background: rgba(201, 162, 101, 0.3); }
+    </style>
+</head>
+<body class="bg-rofan-light dark:bg-rofan-dark text-gray-800 dark:text-gray-200 min-h-screen flex flex-col transition-colors duration-300 overflow-hidden">
+
+    <!-- Sidebar Overlay (Mobile) -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-30 hidden backdrop-blur-sm transition-opacity" onclick="toggleSidebar()"></div>
+
+    <!-- History Sidebar -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform -translate-x-full transition-transform duration-300 z-40 flex flex-col shadow-2xl h-screen">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+            <h2 class="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left"></i>歷史紀錄
+            </h2>
+            <button onclick="toggleSidebar()" class="text-gray-500 hover:text-rofan-primary"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-3 flex-1 overflow-y-auto space-y-2" id="historyList">
+            <!-- History items will be injected here -->
+        </div>
+        <div class="p-3 border-t border-gray-200 dark:border-gray-800 flex gap-2">
+            <button onclick="openModal('exportHistoryModal')" class="flex-1 py-2 text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-blue-200 dark:border-blue-800/30" title="匯出紀錄">
+                <i class="fa-solid fa-download mr-1"></i>匯出
+            </button>
+            <button onclick="clearHistory()" class="flex-1 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-red-200 dark:border-red-800/30">
+                <i class="fa-solid fa-trash-can mr-1"></i>清空
+            </button>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col min-w-0 h-screen relative">
+        <header class="border-b border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-black/80 backdrop-blur-md sticky top-0 z-20 shadow-sm shrink-0">
+            <div class="max-w-screen-2xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="text-gray-600 dark:text-gray-300 hover:text-rofan-primary" title="開啟歷史紀錄">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                    <i class="fa-solid fa-feather-pointed text-rofan-primary text-2xl"></i>
+                    <h1 class="text-xl font-bold font-serif tracking-wide hidden lg:block text-transparent bg-clip-text bg-gradient-to-r from-rofan-primary to-rofan-secondary">小說翻譯器</h1>
+                </div>
+                
+                <div class="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+                    <!-- Google Sync Button (保留，不啟用時會維持灰色，無感相容) -->
+                    <button id="googleSyncBtn" onclick="handleAuthClick()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg transition-all shadow-sm" title="與 Google 雲端硬碟進行同步備份 (選填啟用)">
+                        <i class="fab fa-google text-gray-400"></i>
+                        <span id="googleSyncText">備份至雲端</span>
+                    </button>
+
+                    <!-- Language Selector -->
+                    <select id="sourceLanguage" class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rofan-primary transition-colors cursor-pointer text-gray-700 dark:text-gray-300 shadow-sm">
+                        <option value="auto">🌐 自動偵測 ➡️ 繁中</option>
+                        <option value="ko">🇰🇷 韓文 ➡️ 繁中</option>
+                        <option value="ja">🇯🇵 日文 ➡️ 繁中</option>
+                        <option value="en">🇺🇸 英文 ➡️ 繁中</option>
+                    </select>
+
+                    <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 px-2 shadow-sm">
+                        <label class="flex items-center gap-1 cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300" title="開啟以讓AI自動判斷小說風格">
+                            <input type="checkbox" id="autoGenreToggle" checked onchange="toggleGenreSelect()" class="accent-rofan-primary w-4 h-4">
+                            <span class="hidden xl:inline text-xs">自動識別</span><i class="fa-solid fa-wand-magic-sparkles xl:hidden"></i>
+                        </label>
+                        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></span>
+                        <div class="relative">
+                            <button id="genreDropdownBtn" disabled onclick="toggleGenreDropdown(event)" class="bg-transparent text-sm font-medium focus:outline-none disabled:opacity-50 text-gray-700 dark:text-gray-300 flex items-center gap-1.5 truncate max-w-[100px] sm:max-w-[150px]">
+                                <span id="genreDropdownText" class="truncate">羅曼奇幻</span>
+                                <i class="fa-solid fa-chevron-down text-[10px] opacity-70"></i>
+                            </button>
+                            <div id="genreDropdownMenu" class="hidden absolute right-0 sm:left-0 top-full mt-2 w-56 max-h-[60vh] overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 p-2">
+                                <div class="mb-1.5">
+                                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 px-2">熱門主流</div>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="羅曼奇幻" class="accent-rofan-primary w-3.5 h-3.5" checked onchange="updateGenreText(this)"><span class="text-sm">羅曼奇幻 (RoFan)</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="日式輕小說" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">日式輕小說</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="異世界轉生" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">異世界轉生</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="現代都市" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">現代都市</span></label>
+                                </div>
+                                <div class="mb-1.5">
+                                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 px-2">特定題材</div>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="無限流/系統" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">無限流/系統面板</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="惡役千金/復仇" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">惡役千金/復仇</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="歷史古言/宮鬥" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">歷史古言/宮鬥</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="財閥/演藝圈" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">財閥/演藝圈</span></label>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 px-2">其他類型</div>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="武俠/仙俠" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">武俠/仙俠</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="奇幻冒險" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">奇幻冒險</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="科幻/末日" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">科幻/末日</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="耽美/百合" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">耽美/百合</span></label>
+                                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"><input type="radio" name="genre" value="18禁情色" class="accent-rofan-primary w-3.5 h-3.5" onchange="updateGenreText(this)"><span class="text-sm">18禁情色 (18+)</span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hidden md:flex items-center bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
+                        <button onclick="setViewMode('source')" id="btnViewSource" class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">原文</button>
+                        <button onclick="setViewMode('dual')" id="btnViewDual" class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-white dark:bg-gray-700 shadow text-rofan-primary">雙欄</button>
+                        <button onclick="setViewMode('result')" id="btnViewResult" class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">翻譯</button>
+                    </div>
+
+                    <!-- Actions -->
+                    <button onclick="openModal('termsModal')" class="flex items-center justify-center w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 rounded-lg text-sm font-bold transition-colors shadow-sm" title="詞彙表">
+                        <i class="fa-solid fa-book-bookmark"></i><span class="hidden lg:inline ml-1.5">詞彙表</span>
+                    </button>
+                    <button onclick="openModal('settingsModal')" class="flex items-center justify-center w-9 h-9 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-sm transition-colors shadow-sm" title="系統設定">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+
+                    <!-- Text Size Controls -->
+                    <div class="hidden sm:flex items-center bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-1 shadow-sm">
+                        <button onclick="changeFontSize(-1)" class="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-rofan-primary transition-colors" title="縮小字體">
+                            <i class="fa-solid fa-font text-xs"></i><i class="fa-solid fa-minus" style="font-size: 8px;"></i>
+                        </button>
+                        <span class="w-px h-3 bg-gray-300 dark:bg-gray-600 mx-1"></span>
+                        <button onclick="changeFontSize(1)" class="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-rofan-primary transition-colors" title="放大字體">
+                            <i class="fa-solid fa-font text-base"></i><i class="fa-solid fa-plus" style="font-size: 8px;"></i>
+                        </button>
+                    </div>
+
+                    <button onclick="toggleTheme()" class="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-rofan-primary transition-colors shadow-sm" title="深淺色">
+                        <i class="fa-solid fa-moon dark:hidden"></i>
+                        <i class="fa-solid fa-sun hidden dark:block"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 max-w-screen-2xl mx-auto w-full p-2 sm:p-4 flex flex-col md:flex-row gap-4 overflow-hidden relative">
+            
+            <!-- Left Panel: Original Text -->
+            <div id="sourcePanel" class="flex-1 flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden transition-all duration-300 relative">
+                <!-- Drop Overlay -->
+                <div id="dropOverlay" class="absolute inset-0 bg-rofan-primary/10 dark:bg-rofan-primary/20 border-4 border-dashed border-rofan-primary z-10 hidden flex-col items-center justify-center pointer-events-none">
+                    <i class="fa-solid fa-file-arrow-up text-5xl text-rofan-primary mb-2"></i>
+                    <p class="font-bold text-rofan-primary text-xl">放開以上傳 TXT</p>
+                </div>
+
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-gray-800/50">
+                    <div class="flex items-center gap-2">
+                        <h2 class="font-semibold text-sm text-gray-600 dark:text-gray-400 hidden sm:block">外文原文</h2>
+                        
+                        <!-- File Upload -->
+                        <input type="file" id="txtUploadInput" accept=".txt" class="hidden" onchange="handleFileUpload(event)">
+                        <button onclick="document.getElementById('txtUploadInput').click()" class="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 px-2 py-1 rounded transition-colors flex items-center gap-1" title="匯入 TXT 檔案">
+                            <i class="fa-solid fa-upload"></i> <span class="hidden xl:inline">匯入</span>
+                        </button>
+
+                        <!-- Quick Add Term Button (Shows on Selection) -->
+                        <button id="quickAddTermBtn" onclick="quickAddTerm()" class="hidden text-xs bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-200 px-2 py-1 rounded transition-colors items-center gap-1 shadow-sm border border-blue-200 dark:border-blue-800 animate-pulse-fast">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> 加入字典
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-3 text-sm">
+                        <label class="flex items-center gap-1 cursor-pointer text-gray-500 hover:text-rofan-primary">
+                            <input type="checkbox" id="syncScrollToggle" checked class="accent-rofan-primary w-3.5 h-3.5"> <span class="text-xs">同步捲動</span>
+                        </label>
+                        <span class="text-xs text-gray-400 w-16 text-right" id="charCount">0 字</span>
+                        <button onclick="clearInput()" class="text-gray-400 hover:text-red-500 transition-colors" title="清空"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+                <textarea id="sourceText" oninput="handleInput()" onmouseup="checkTextSelection('source')" class="flex-1 w-full p-4 bg-transparent resize-none focus:outline-none reading-text text-lg overflow-y-auto" placeholder="在此貼上原文，或直接將 .txt 檔案拖曳進來... (Ctrl+Enter 翻譯)"></textarea>
+            </div>
+
+            <!-- Translate Button Mobile -->
+            <div id="mobileTranslateBtnContainer" class="flex justify-center items-center md:hidden shrink-0">
+                <button onclick="translateNovel()" class="bg-rofan-primary text-white w-12 h-12 rounded-full shadow-lg transform hover:scale-105 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                </button>
+            </div>
+
+            <!-- Right Panel: Translated Text -->
+            <div id="resultPanel" class="flex-1 flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden relative transition-all duration-300">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-gray-800/50">
+                    <div class="flex items-center gap-2">
+                        <h2 class="font-semibold text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-book-open"></i>繁中翻譯
+                            <span class="text-[10px] bg-gray-200 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded font-normal hidden sm:inline-block" title="您可以直接點擊下方文字進行人工修改">✏️ 可編輯</span>
+                        </h2>
+                        
+                        <!-- Quick Improve Selection Button -->
+                        <button id="quickImproveBtn" onclick="improveSelection()" class="hidden text-xs bg-rofan-primary/20 text-rofan-primary hover:bg-rofan-primary/30 px-2 py-1 rounded transition-colors items-center gap-1 shadow-sm border border-rofan-primary/30">
+                            <i class="fa-solid fa-pen-nib"></i> AI 優化此段
+                        </button>
+                        
+                        <span id="detectedGenreBadge" class="hidden text-[10px] px-2 py-0.5 bg-rofan-primary/20 text-rofan-primary rounded border border-rofan-primary/30 truncate max-w-[100px]"></span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <!-- TTS Button -->
+                        <button id="ttsBtn" onclick="toggleTTS()" class="text-gray-500 hover:text-rofan-primary transition-colors text-sm w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-700" title="語音朗讀">
+                            <i class="fa-solid fa-volume-high"></i>
+                        </button>
+                        <div class="w-px h-4 bg-gray-300 dark:bg-gray-700"></div>
+                        <button onclick="downloadTranslation()" class="text-gray-500 hover:text-rofan-primary text-sm transition-colors flex items-center gap-1" title="下載 TXT"><i class="fa-solid fa-download"></i><span class="hidden sm:inline text-xs">下載</span></button>
+                        <button onclick="copyTranslation()" class="text-gray-500 hover:text-rofan-primary text-sm transition-colors flex items-center gap-1" title="複製全文"><i class="fa-regular fa-copy"></i><span class="hidden sm:inline text-xs">複製</span></button>
+                    </div>
+                </div>
+                
+                <div id="resultText" contenteditable="true" oninput="handleResultInput()" onmouseup="checkTextSelection('result')" class="flex-1 w-full p-4 bg-transparent overflow-y-auto reading-text text-lg whitespace-pre-wrap outline-none relative" tabindex="0">翻譯結果將顯示於此... (選取文字可進行 AI 局部優化)</div>
+
+                <div id="loadingOverlay" class="absolute inset-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm hidden flex-col items-center justify-center z-10 transition-opacity">
+                    <i class="fa-solid fa-wand-magic-sparkles text-rofan-primary text-5xl mb-4 animate-bounce"></i>
+                    <p id="loadingText" class="text-rofan-primary font-bold text-lg mb-2">解析與分段中...</p>
+                    <div class="w-56 bg-gray-200 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden hidden" id="progressBarContainer">
+                        <div class="bg-gradient-to-r from-rofan-primary to-rofan-secondary h-2.5 rounded-full transition-all duration-300 w-0" id="progressBar"></div>
+                    </div>
+                    <p id="progressText" class="text-xs text-gray-500 mt-2 font-mono hidden">0%</p>
+                    <div class="flex gap-2">
+                        <button onclick="cancelAction()" id="cancelBtn" class="mt-4 px-4 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-full text-xs font-bold hidden transition-all">中斷作業</button>
+                        <button onclick="resumeTranslation()" id="resumeBtn" class="mt-4 px-4 py-1.5 bg-green-100 hover:bg-green-200 text-green-600 rounded-full text-xs font-bold hidden transition-all"><i class="fa-solid fa-play mr-1"></i>從斷點處續翻</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Fixed Desktop Translate Button -->
+        <div class="hidden md:flex justify-center absolute bottom-6 left-0 right-0 pointer-events-none z-20">
+            <button onclick="translateNovel()" class="pointer-events-auto bg-gradient-to-r from-rofan-primary to-rofan-secondary text-white font-bold py-3 px-10 rounded-full shadow-xl transition-all transform hover:-translate-y-1 hover:shadow-rofan-primary/40 flex items-center gap-3 text-lg border border-white/20">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>開始精翻<span class="text-xs opacity-70 ml-1 font-normal">(Ctrl+Enter)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 rounded-t-2xl shrink-0">
+                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-200"><i class="fa-solid fa-gear text-gray-500 mr-2"></i>系統與 API 設定</h3>
+                <button onclick="closeModal('settingsModal')" class="text-gray-400 hover:text-red-500 w-8 h-8 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 flex justify-center items-center transition-colors"><i class="fa-solid fa-times"></i></button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-5 flex-1">
+                <!-- Google Authentication Integration Config (保留給使用者選填) -->
+                <div class="bg-red-50/50 dark:bg-red-950/10 p-4 rounded-xl border border-red-100/50 dark:border-red-900/20">
+                    <h4 class="text-xs font-bold text-red-700 dark:text-red-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <i class="fab fa-google"></i> Google 雲端硬碟備份金鑰 (選填)
+                    </h4>
+                    <p class="text-[11px] text-gray-500 mb-3 leading-relaxed">可自行填寫在 Google Cloud 申請的網頁用戶端憑證，藉此將資料無縫備份備份在雲端硬碟。</p>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Google OAuth Client ID</label>
+                            <input type="text" id="googleClientIdInput" placeholder="789...apps.googleusercontent.com" class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2 font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Provider Config -->
+                <div class="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30">
+                    <h4 class="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider mb-3">API 連線設定</h4>
+                    
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API 格式類型</label>
+                        <select id="apiTypeInput" onchange="toggleApiFields()" class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                            <option value="gemini">Google Gemini 原生格式 (預設)</option>
+                            <option value="openai">OpenAI 相容格式 (適用 GPT, Claude, 第三方中轉站)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key <span class="text-red-500">*</span></label>
+                        <input type="password" id="apiKeyInput" placeholder="輸入您的金鑰 (僅本地安全儲存)" class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2 font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div id="baseUrlContainer" class="hidden">
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Base URL (代理端點)</label>
+                            <input type="text" id="baseUrlInput" placeholder="https://api.openai.com" class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">模型名稱 (Model)</label>
+                            <input type="text" id="modelNameInput" placeholder="gemini-1.5-flash" class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2 font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 智慧分段字數設定 -->
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1 flex justify-between">
+                        <span>智慧分段長度上限 (每個區塊字數)</span>
+                        <span id="chunkSizeVal" class="text-rofan-primary font-mono font-bold">1200 字</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mb-2">長度越小速度越快，若使用 Pro 級別別大型模型可拉大段落上限以增強全文連貫性。</p>
+                    <input type="range" id="chunkSizeInput" min="1000" max="6000" step="500" value="1200" oninput="document.getElementById('chunkSizeVal').innerText = this.value + ' 字'" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rofan-primary dark:bg-gray-700">
+                </div>
+
+                <!-- Translation Optimizations -->
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">一鍵優化翻譯品質</label>
+                    <div class="space-y-2 mb-3 bg-gray-50 dark:bg-gray-800/50 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                            <input type="checkbox" id="optFluent" checked class="mt-1 accent-rofan-primary w-4 h-4 cursor-pointer">
+                            <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-rofan-primary transition-colors">
+                                <b class="block mb-0.5"><i class="fa-solid fa-wand-magic-sparkles text-rofan-primary mr-1"></i>消除翻譯腔</b>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">句子符合繁中母語習慣，對話生動，俚語改用中文成語，絕不生硬直譯。</span>
+                            </span>
+                        </label>
+                        <hr class="border-gray-200 dark:border-gray-700 my-1.5">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                            <input type="checkbox" id="optConcise" checked class="mt-1 accent-rofan-primary w-4 h-4 cursor-pointer">
+                            <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-rofan-primary transition-colors">
+                                <b class="block mb-0.5"><i class="fa-solid fa-scissors text-rofan-primary mr-1"></i>精簡冗言贅字</b>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">刪除外文常有但中文不需要的過度代名詞 (如過多的他/她) 與被動語態。</span>
+                            </span>
+                        </label>
+                        <hr class="border-gray-200 dark:border-gray-700 my-1.5">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                            <input type="checkbox" id="optHonorifics" checked class="mt-1 accent-rofan-primary w-4 h-4 cursor-pointer">
+                            <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-rofan-primary transition-colors">
+                                <b class="block mb-0.5"><i class="fa-solid fa-chess-king text-rofan-primary mr-1"></i>強化尊卑階級語氣</b>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">精準還原貴族/平民、長輩/晚輩的語氣差異，保留敬語與大人、少爺等稱呼。</span>
+                            </span>
+                        </label>
+                        <hr class="border-gray-200 dark:border-gray-700 my-1.5">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                            <input type="checkbox" id="optLively" checked class="mt-1 accent-rofan-primary w-4 h-4 cursor-pointer">
+                            <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-rofan-primary transition-colors">
+                                <b class="block mb-0.5"><i class="fa-solid fa-comments text-rofan-primary mr-1"></i>對話活潑口語化</b>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">讓角色的對話貼近現代日常口語習慣，避免過於像在唸書的死板書面語。</span>
+                            </span>
+                        </label>
+                        <hr class="border-gray-200 dark:border-gray-700 my-1.5">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                            <input type="checkbox" id="optMemory" checked class="mt-1 accent-rofan-primary w-4 h-4 cursor-pointer">
+                            <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-rofan-primary transition-colors">
+                                <b class="block mb-0.5"><i class="fa-solid fa-link text-rofan-primary mr-1"></i>開啟長文上下文記憶 (推薦)</b>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">翻譯長文時自動帶入前段結尾，確保跨段落時的人物代名詞與對話邏輯連貫。</span>
+                            </span>
+                        </label>
+                        <hr class="border-gray-200 dark:border-gray-700 my-1.5">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                            <input type="checkbox" id="optForceGlossary" checked class="mt-1 accent-rofan-primary w-4 h-4 cursor-pointer">
+                            <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-rofan-primary transition-colors">
+                                <b class="block mb-0.5"><i class="fa-solid fa-shield-halved text-rofan-primary mr-1"></i>100% 強制術語後處理 (極力推薦)</b>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">開啟後程式會在翻譯輸出前再次對比詞彙表，進行長詞優先強制替換，100% 杜絕 AI 遺忘詞彙。</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">自訂提示詞 (Custom Prompt)</h4>
+                    <textarea id="customPromptInput" rows="2" placeholder="附加要求，如：保留日文的「君/醬」等尊稱..." class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2 resize-none focus:ring-2 focus:ring-blue-500 outline-none transition-colors"></textarea>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-2xl flex justify-end shrink-0">
+                <button onclick="saveSettings()" class="bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 px-6 py-2 rounded-lg text-sm font-bold shadow-md hover:scale-105 transition-transform">儲存設定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export History Modal -->
+    <div id="exportHistoryModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm mx-4 flex flex-col">
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 rounded-t-2xl shrink-0">
+                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-200"><i class="fa-solid fa-download text-blue-500 mr-2"></i>匯出歷史紀錄</h3>
+                <button onclick="closeModal('exportHistoryModal')" class="text-gray-400 hover:text-red-500 w-8 h-8 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 flex justify-center items-center transition-colors"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="p-5 flex flex-col gap-3">
+                <button onclick="exportAllHistory('merged')" class="flex items-center justify-center gap-2 w-full py-3 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-xl transition-colors font-bold border border-blue-200 dark:border-blue-800 shadow-sm">
+                    <i class="fa-solid fa-file-lines text-lg"></i> 合併匯出單一檔案
+                </button>
+                <button onclick="exportAllHistory('separate')" class="flex items-center justify-center gap-2 w-full py-3 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors font-bold border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <i class="fa-solid fa-copy text-lg"></i> 分割匯出多個檔案
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms Modal -->
+    <div id="termsModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl mx-4 flex flex-col h-[85vh]">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 rounded-t-2xl shrink-0">
+                <div class="flex items-center gap-3">
+                    <h3 class="font-bold text-lg text-gray-800 dark:text-gray-200"><i class="fa-solid fa-book-bookmark text-blue-500 mr-2"></i>專屬詞彙表 (統一譯名)</h3>
+                    
+                    <!-- Profile Selector -->
+                    <div class="flex items-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 overflow-hidden">
+                        <select id="profileSelector" onchange="switchProfile()" class="text-xs font-bold bg-transparent text-gray-700 dark:text-gray-300 py-1.5 pl-2 pr-6 outline-none appearance-none cursor-pointer">
+                            <!-- Profiles injected here -->
+                        </select>
+                        <button onclick="addProfile()" class="px-2 py-1.5 text-gray-400 hover:text-blue-500 border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700" title="新增設定檔"><i class="fa-solid fa-plus text-[10px]"></i></button>
+                        <button onclick="deleteProfile()" class="px-2 py-1.5 text-gray-400 hover:text-red-500 border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700" title="刪除當前設定檔"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <input type="file" id="importJsonInput" accept=".json" class="hidden" onchange="importTerms(event)">
+                    <button onclick="document.getElementById('importJsonInput').click()" class="text-xs flex items-center gap-1 text-gray-600 hover:text-blue-600 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded px-2 py-1.5 transition-colors" title="匯入 JSON"><i class="fa-solid fa-file-import"></i> <span class="hidden sm:inline">匯入</span></button>
+                    <button onclick="exportTerms()" class="text-xs flex items-center gap-1 text-gray-600 hover:text-blue-600 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded px-2 py-1.5 transition-colors" title="匯出 JSON"><i class="fa-solid fa-file-export"></i> <span class="hidden sm:inline">匯出</span></button>
+                    <button onclick="closeModal('termsModal')" class="w-8 h-8 text-gray-400 hover:text-red-500 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ml-2 flex justify-center items-center transition-colors"><i class="fa-solid fa-times text-lg"></i></button>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800/30 shrink-0">
+                <p class="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+                    <i class="fa-solid fa-circle-info mr-1"></i>在此加入的小說人名、地名、物品名，AI 翻譯時會<b>強制替換</b>。<br>
+                    <span class="mt-1 block font-medium">💡 就算不懂外文，也可以直接輸入「原譯名 ➡️ 新譯名」（例：將 AI 翻出的「昭雅」強制改成「小雅」）。</span>
+                </p>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-gray-900/50 space-y-2" id="termsList">
+                <!-- Terms injected here -->
+            </div>
+
+            <div class="px-6 py-5 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 rounded-b-2xl shrink-0 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
+                <form onsubmit="handleTermSubmit(event)" class="flex flex-col sm:flex-row gap-3">
+                    <div class="flex-1">
+                        <input type="text" id="newTermSource" required placeholder="原文或原譯名 (例: 리리 或 昭雅)" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-blue-500 outline-none shadow-inner transition-shadow">
+                    </div>
+                    <div class="flex items-center justify-center text-gray-400">
+                        <i class="fa-solid fa-arrow-right-long hidden sm:block"></i>
+                        <i class="fa-solid fa-arrow-down-long sm:hidden"></i>
+                    </div>
+                    <div class="flex-1">
+                        <input type="text" id="newTermTarget" required placeholder="強制翻譯為 (例: 莉莉)" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-sm rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-blue-500 outline-none shadow-inner transition-shadow">
+                    </div>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md transition-colors whitespace-nowrap"><i class="fa-solid fa-plus mr-1"></i>新增</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Variables ---
+        let currentViewMode = 'dual'; // 'source', 'result', 'dual'
+        
+        // Font Size State
+        let currentFontSize = 18; 
+        const MIN_FONT_SIZE = 12;
+        const MAX_FONT_SIZE = 32;
+
+        // Settings State
+        let apiSettings = {
+            type: 'gemini',
+            key: '',
+            baseUrl: '',
+            model: 'gemini-1.5-flash',
+            opts: { fluent: true, concise: true, honorifics: true, lively: true, memory: true, forceGlossary: true },
+            customPrompt: '',
+            googleClientId: '',
+            googleApiKey: '',
+            chunkSize: 1200
+        };
+
+        // Profiles & Dictionary State
+        let termProfiles = { "預設": [] };
+        let activeProfile = "預設";
+        
+        // History State
+        let translationHistory = [];
+
+        // Translation Engine Control Variables
+        let isTranslating = false;
+        let abortController = null;
+        let selectedTextInfo = { type: null, text: '' };
+        
+        // Checkpoint for resumable translation
+        let currentChunksArray = [];
+        let completedChunksResults = [];
+        let currentTranslationIndex = 0;
+        let currentInputFullText = "";
+
+        // TTS State
+        let ttsUtterance = null;
+        let isPlayingTTS = false;
+
+        // Google API Integration State (Keep placeholders intact)
+        let tokenClient = null;
+        let googleAccessToken = null;
+        let googleBackupFileId = null;
+        const BACKUP_FILENAME = "novel_translator_cloud_backup.json";
+
+        // Elements
+        const elSource = document.getElementById('sourceText');
+        const elResult = document.getElementById('resultText');
+        const elCharCount = document.getElementById('charCount');
+
+        // --- IndexedDB Native Storage Implementation (Bye 5MB Limit) ---
+        let db = null;
+        const DB_NAME = "NovelTranslatorDatabase";
+        const DB_VERSION = 1;
+
+        function initIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = (event) => reject("DB Open Failed: " + event.target.errorCode);
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+                request.onupgradeneeded = (event) => {
+                    const localDb = event.target.result;
+                    // Object Store for storing giant novel backup records
+                    if (!localDb.objectStoreNames.contains("giantHistory")) {
+                        localDb.createObjectStore("giantHistory", { keyPath: "id" });
+                    }
+                };
+            });
+        }
+
+        // Save translation records to IndexedDB securely
+        async function saveHistoryToDB(item) {
+            if (!db) await initIndexedDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(["giantHistory"], "readwrite");
+                const store = transaction.objectStore("giantHistory");
+                const request = store.put(item);
+                request.onsuccess = () => resolve(true);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        // Retrieve translation records from IndexedDB safely
+        async function loadHistoryFromDB() {
+            if (!db) await initIndexedDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(["giantHistory"], "readonly");
+                const store = transaction.objectStore("giantHistory");
+                const request = store.getAll();
+                request.onsuccess = (event) => resolve(event.target.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function clearHistoryFromDB() {
+            if (!db) await initIndexedDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(["giantHistory"], "readwrite");
+                const store = transaction.objectStore("giantHistory");
+                const request = store.clear();
+                request.onsuccess = () => resolve(true);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await initIndexedDB();
+            } catch(e) {
+                console.warn("IndexedDB failed to init. LocalStorage will act as fallback.", e);
+            }
+            await loadData();
+            initTheme();
+            setupSyncScroll();
+            setupDragAndDrop();
+            renderProfileSelector();
+            renderTerms();
+            await renderHistory();
+            applyViewMode('dual');
+            applyFontSize();
+            
+            // Try to load Google Auth asynchronously
+            setTimeout(initGoogleAPI, 1000);
+
+            // Keyboard shortcut for translation
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    translateNovel();
+                }
+            });
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', (e) => {
+                const btn = document.getElementById('genreDropdownBtn');
+                const menu = document.getElementById('genreDropdownMenu');
+                if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) {
+                    menu.classList.add('hidden');
+                }
+            });
+        });
+
+        // --- Google Cloud Sync Placeholders ---
+        function initGoogleAPI() {
+            if (typeof google === 'undefined' || !apiSettings.googleClientId) return;
+            try {
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: apiSettings.googleClientId,
+                    scope: 'https://www.googleapis.com/auth/drive.file',
+                    callback: async (resp) => {
+                        if (resp.error) return;
+                        googleAccessToken = resp.access_token;
+                        document.getElementById('googleSyncText').innerText = "☁️ 已連線 Google";
+                        document.getElementById('googleSyncBtn').className = "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg transition-all shadow-sm";
+                        showToast("已成功連結 Google 帳戶！");
+                        await syncFromGoogleDrive();
+                    }
+                });
+            } catch (err) {
+                console.error("GAuth init error: ", err);
+            }
+        }
+
+        function handleAuthClick() {
+            if (!apiSettings.googleClientId) {
+                showToast("請點選齒輪，設定你的 Google Client ID", "error");
+                openModal('settingsModal');
+                return;
+            }
+            if (googleAccessToken) {
+                syncFromGoogleDrive();
+                return;
+            }
+            if (tokenClient) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            }
+        }
+
+        async function syncFromGoogleDrive() {
+            if (!googleAccessToken) return;
+            try {
+                showToast("正在同步雲端硬碟...", "success");
+                const queryUrl = `https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_FILENAME}' and trashed=false&fields=files(id,name)`;
+                const queryResp = await fetch(queryUrl, { headers: { 'Authorization': `Bearer ${googleAccessToken}` } });
+                const queryData = await queryResp.json();
+                
+                let cloudData = null;
+                if (queryData.files && queryData.files.length > 0) {
+                    googleBackupFileId = queryData.files[0].id;
+                    const downloadUrl = `https://www.googleapis.com/drive/v3/files/${googleBackupFileId}?alt=media`;
+                    const downloadResp = await fetch(downloadUrl, { headers: { 'Authorization': `Bearer ${googleAccessToken}` } });
+                    cloudData = await downloadResp.json();
+                }
+
+                if (cloudData) {
+                    let mergeCount = 0;
+                    if (cloudData.history) {
+                        for(const item of cloudData.history) {
+                            const isNew = !translationHistory.some(lh => lh.id === item.id);
+                            if(isNew) {
+                                translationHistory.push(item);
+                                await saveHistoryToDB(item);
+                                mergeCount++;
+                            }
+                        }
+                        translationHistory.sort((a,b) => b.id - a.id);
+                    }
+                    if (cloudData.profiles) {
+                        Object.keys(cloudData.profiles).forEach(profName => {
+                            if (!termProfiles[profName]) {
+                                termProfiles[profName] = cloudData.profiles[profName];
+                                mergeCount++;
+                            } else {
+                                const existingSources = new Set(termProfiles[profName].map(t => t.s));
+                                cloudData.profiles[profName].forEach(term => {
+                                    if (!existingSources.has(term.s)) {
+                                        termProfiles[profName].push(term);
+                                        mergeCount++;
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    if (mergeCount > 0) {
+                        saveData();
+                        renderTerms();
+                        await renderHistory();
+                        showToast(`已雙向同步！還原 ${mergeCount} 筆資料`);
+                    } else {
+                        showToast("備份已是最新狀態");
+                    }
+                }
+                await uploadBackupToGoogleDrive();
+            } catch (err) {
+                console.error("Sync Drive Failed: ", err);
+            }
+        }
+
+        async function uploadBackupToGoogleDrive() {
+            if (!googleAccessToken) return;
+            try {
+                const payload = {
+                    history: translationHistory,
+                    profiles: termProfiles,
+                    activeProfile: activeProfile,
+                    settings: { opts: apiSettings.opts, customPrompt: apiSettings.customPrompt, type: apiSettings.type, model: apiSettings.model }
+                };
+                const metadata = { name: BACKUP_FILENAME, mimeType: 'application/json' };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const form = new FormData();
+                form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+                form.append('file', blob);
+
+                let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+                let method = 'POST';
+                if (googleBackupFileId) {
+                    url = `https://www.googleapis.com/upload/drive/v3/files/${googleBackupFileId}?uploadType=multipart`;
+                    method = 'PATCH';
+                }
+                const resp = await fetch(url, { method: method, headers: { 'Authorization': `Bearer ${googleAccessToken}` }, body: form });
+                if (resp.ok) {
+                    const file = await resp.json();
+                    googleBackupFileId = file.id;
+                }
+            } catch (err) {
+                console.error("GBackup error: ", err);
+            }
+        }
+
+        // --- Local Storage Loading ---
+        async function loadData() {
+            const savedSettings = localStorage.getItem('rt_settings');
+            if (savedSettings) {
+                apiSettings = { ...apiSettings, ...JSON.parse(savedSettings) };
+                if (apiSettings.chunkSize === undefined) apiSettings.chunkSize = 1200;
+            }
+            
+            const savedProfiles = localStorage.getItem('rt_profiles');
+            if (savedProfiles) termProfiles = JSON.parse(savedProfiles);
+            
+            const savedActive = localStorage.getItem('rt_active_profile');
+            if (savedActive && termProfiles[savedActive]) activeProfile = savedActive;
+
+            // Load History securely from IndexedDB first, fallback to LocalStorage
+            try {
+                const dbHistory = await loadHistoryFromDB();
+                if (dbHistory && dbHistory.length > 0) {
+                    translationHistory = dbHistory.sort((a,b) => b.id - a.id);
+                } else {
+                    const savedHistory = localStorage.getItem('rt_history');
+                    if (savedHistory) {
+                        translationHistory = JSON.parse(savedHistory);
+                        for(const item of translationHistory) {
+                            await saveHistoryToDB(item);
+                        }
+                    }
+                }
+            } catch(e) {
+                const savedHistory = localStorage.getItem('rt_history');
+                if (savedHistory) translationHistory = JSON.parse(savedHistory);
+            }
+
+            const savedFontSize = localStorage.getItem('rt_fontsize');
+            if (savedFontSize) currentFontSize = parseInt(savedFontSize);
+
+            updateSettingsUI();
+        }
+
+        function saveData() {
+            localStorage.setItem('rt_settings', JSON.stringify(apiSettings));
+            localStorage.setItem('rt_profiles', JSON.stringify(termProfiles));
+            localStorage.setItem('rt_active_profile', activeProfile);
+            localStorage.setItem('rt_fontsize', currentFontSize);
+
+            if (googleAccessToken) {
+                uploadBackupToGoogleDrive();
+            }
+        }
+
+        // --- Theme & Font Size ---
+        function initTheme() {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        function toggleTheme() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+
+        function changeFontSize(step) {
+            currentFontSize += step * 2;
+            if (currentFontSize < MIN_FONT_SIZE) currentFontSize = MIN_FONT_SIZE;
+            if (currentFontSize > MAX_FONT_SIZE) currentFontSize = MAX_FONT_SIZE;
+            applyFontSize();
+            saveData();
+        }
+
+        function applyFontSize() {
+            const elements = document.querySelectorAll('.reading-text');
+            elements.forEach(el => {
+                el.style.fontSize = `${currentFontSize}px`;
+            });
+        }
+
+        // --- View Mode ---
+        function setViewMode(mode) {
+            currentViewMode = mode;
+            applyViewMode(mode);
+        }
+
+        function applyViewMode(mode) {
+            const sourcePanel = document.getElementById('sourcePanel');
+            const resultPanel = document.getElementById('resultPanel');
+            const btns = {
+                source: document.getElementById('btnViewSource'),
+                dual: document.getElementById('btnViewDual'),
+                result: document.getElementById('btnViewResult')
+            };
+
+            if(btns.source) {
+                Object.values(btns).forEach(b => {
+                    b.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow', 'text-rofan-primary');
+                    b.classList.add('text-gray-500');
+                });
+                btns[mode].classList.add('bg-white', 'dark:bg-gray-700', 'shadow', 'text-rofan-primary');
+                btns[mode].classList.remove('text-gray-500');
+            }
+
+            if (mode === 'dual') {
+                sourcePanel.classList.remove('hidden');
+                resultPanel.classList.remove('hidden');
+            } else if (mode === 'source') {
+                sourcePanel.classList.remove('hidden');
+                resultPanel.classList.add('hidden');
+            } else if (mode === 'result') {
+                sourcePanel.classList.add('hidden');
+                resultPanel.classList.remove('hidden');
+            }
+        }
+
+        // --- Editor Logic ---
+        function handleInput() {
+            elCharCount.innerText = `${elSource.value.length} 字`;
+        }
+
+        function clearInput() {
+            if(confirm('確定要清空原文嗎？')) {
+                elSource.value = '';
+                handleInput();
+            }
+        }
+
+        function handleResultInput() {
+            // Keep contenteditable aligned
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            readFile(file);
+        }
+
+        function setupDragAndDrop() {
+            const overlay = document.getElementById('dropOverlay');
+            const panel = document.getElementById('sourcePanel');
+
+            panel.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            });
+
+            panel.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+            });
+
+            panel.addEventListener('drop', (e) => {
+                e.preventDefault();
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+                
+                if (e.dataTransfer.files.length) {
+                    readFile(e.dataTransfer.files[0]);
+                }
+            });
+        }
+
+        function readFile(file) {
+            if (file.type !== 'text/plain') {
+                showToast('請上傳 .txt 格式檔案', 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                elSource.value = e.target.result;
+                handleInput();
+                showToast('檔案載入成功');
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Sync Scroll ---
+        function setupSyncScroll() {
+            let isSyncingLeft = false;
+            let isSyncingRight = false;
+            const toggle = document.getElementById('syncScrollToggle');
+
+            elSource.addEventListener('scroll', () => {
+                if (!toggle.checked || isSyncingLeft) {
+                    isSyncingLeft = false;
+                    return;
+                }
+                isSyncingRight = true;
+                const percentage = elSource.scrollTop / (elSource.scrollHeight - elSource.clientHeight);
+                elResult.scrollTop = percentage * (elResult.scrollHeight - elResult.clientHeight);
+            });
+
+            elResult.addEventListener('scroll', () => {
+                if (!toggle.checked || isSyncingRight) {
+                    isSyncingRight = false;
+                    return;
+                }
+                isSyncingLeft = true;
+                const percentage = elResult.scrollTop / (elResult.scrollHeight - elResult.clientHeight);
+                elSource.scrollTop = percentage * (elSource.scrollHeight - elSource.clientHeight);
+            });
+        }
+
+        // --- Selection & Quick Actions ---
+        function checkTextSelection(panelType) {
+            setTimeout(() => {
+                const selection = window.getSelection();
+                const text = selection.toString().trim();
+                const addBtn = document.getElementById('quickAddTermBtn');
+                const impBtn = document.getElementById('quickImproveBtn');
+
+                if (text.length > 0 && text.length < 50 && panelType === 'source') {
+                    addBtn.classList.remove('hidden');
+                    addBtn.classList.add('flex');
+                    selectedTextInfo = { type: 'source', text };
+                } else {
+                    addBtn.classList.add('hidden');
+                    addBtn.classList.remove('flex');
+                }
+
+                if (text.length > 0 && panelType === 'result') {
+                    impBtn.classList.remove('hidden');
+                    impBtn.classList.add('flex');
+                    selectedTextInfo = { type: 'result', text, range: selection.getRangeAt(0) };
+                } else {
+                    impBtn.classList.add('hidden');
+                    impBtn.classList.remove('flex');
+                }
+            }, 50);
+        }
+
+        function quickAddTerm() {
+            document.getElementById('newTermSource').value = selectedTextInfo.text;
+            document.getElementById('newTermTarget').value = '';
+            openModal('termsModal');
+            document.getElementById('newTermTarget').focus();
+            document.getElementById('quickAddTermBtn').classList.add('hidden');
+        }
+
+        // --- Settings Management ---
+        function updateSettingsUI() {
+            document.getElementById('apiTypeInput').value = apiSettings.type || 'gemini';
+            document.getElementById('apiKeyInput').value = apiSettings.key || '';
+            document.getElementById('baseUrlInput').value = apiSettings.baseUrl || '';
+            document.getElementById('modelNameInput').value = apiSettings.model || 'gemini-1.5-flash';
+            document.getElementById('optFluent').checked = apiSettings.opts.fluent;
+            document.getElementById('optConcise').checked = apiSettings.opts.concise;
+            document.getElementById('optHonorifics').checked = apiSettings.opts.honorifics;
+            document.getElementById('optLively').checked = apiSettings.opts.lively;
+            document.getElementById('optMemory').checked = apiSettings.opts.memory;
+            document.getElementById('optForceGlossary').checked = apiSettings.opts.forceGlossary !== false;
+            document.getElementById('customPromptInput').value = apiSettings.customPrompt || '';
+            
+            document.getElementById('googleClientIdInput').value = apiSettings.googleClientId || '';
+            
+            const sizeVal = apiSettings.chunkSize || 1200;
+            document.getElementById('chunkSizeInput').value = sizeVal;
+            document.getElementById('chunkSizeVal').innerText = sizeVal + ' 字';
+
+            toggleApiFields();
+        }
+
+        function toggleApiFields() {
+            const type = document.getElementById('apiTypeInput').value;
+            const container = document.getElementById('baseUrlContainer');
+            const modelInput = document.getElementById('modelNameInput');
+            if (type === 'openai') {
+                container.classList.remove('hidden');
+                if(modelInput.value.includes('gemini')) modelInput.value = 'gpt-4o-mini';
+            } else {
+                container.classList.add('hidden');
+                if(!modelInput.value || modelInput.value.includes('gpt')) modelInput.value = 'gemini-1.5-flash';
+            }
+        }
+
+        function saveSettings() {
+            apiSettings = {
+                type: document.getElementById('apiTypeInput').value,
+                key: document.getElementById('apiKeyInput').value,
+                baseUrl: document.getElementById('baseUrlInput').value,
+                model: document.getElementById('modelNameInput').value,
+                opts: {
+                    fluent: document.getElementById('optFluent').checked,
+                    concise: document.getElementById('optConcise').checked,
+                    honorifics: document.getElementById('optHonorifics').checked,
+                    lively: document.getElementById('optLively').checked,
+                    memory: document.getElementById('optMemory').checked,
+                    forceGlossary: document.getElementById('optForceGlossary').checked
+                },
+                customPrompt: document.getElementById('customPromptInput').value,
+                googleClientId: document.getElementById('googleClientIdInput').value.trim(),
+                chunkSize: parseInt(document.getElementById('chunkSizeInput').value)
+            };
+            saveData();
+            showToast('設定已儲存');
+            closeModal('settingsModal');
+            initGoogleAPI();
+        }
+
+        // --- Genre Management ---
+        function toggleGenreSelect() {
+            const auto = document.getElementById('autoGenreToggle').checked;
+            const btn = document.getElementById('genreDropdownBtn');
+            btn.disabled = auto;
+            if(auto) {
+                document.getElementById('detectedGenreBadge').classList.remove('hidden');
+            } else {
+                document.getElementById('detectedGenreBadge').classList.add('hidden');
+            }
+        }
+
+        function toggleGenreDropdown(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('genreDropdownMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        function updateGenreText(radio) {
+            document.getElementById('genreDropdownText').innerText = radio.value;
+            document.getElementById('genreDropdownMenu').classList.add('hidden');
+        }
+
+        // --- Dictionary Management ---
+        function renderProfileSelector() {
+            const sel = document.getElementById('profileSelector');
+            sel.innerHTML = '';
+            Object.keys(termProfiles).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                if(p === activeProfile) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function switchProfile() {
+            activeProfile = document.getElementById('profileSelector').value;
+            saveData();
+            renderTerms();
+        }
+
+        function addProfile() {
+            const name = prompt('請輸入新設定檔名稱：');
+            if (name && !termProfiles[name]) {
+                termProfiles[name] = [];
+                activeProfile = name;
+                renderProfileSelector();
+                saveData();
+                renderTerms();
+            }
+        }
+
+        function deleteProfile() {
+            if (Object.keys(termProfiles).length <= 1) {
+                showToast('至少需保留一個設定檔', 'error');
+                return;
+            }
+            if (confirm(`確定刪除設定檔「${activeProfile}」？`)) {
+                delete termProfiles[activeProfile];
+                activeProfile = Object.keys(termProfiles)[0];
+                renderProfileSelector();
+                saveData();
+                renderTerms();
+            }
+        }
+
+        function renderTerms() {
+            const list = document.getElementById('termsList');
+            list.innerHTML = '';
+            const terms = termProfiles[activeProfile] || [];
+            
+            if (terms.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-400 py-8 text-sm">目前字典為空，請在下方新增詞彙</div>';
+                return;
+            }
+
+            terms.forEach((t, i) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm';
+                div.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden flex-1">
+                        <span class="font-medium text-gray-800 dark:text-gray-200 truncate">${t.s}</span>
+                        <i class="fa-solid fa-arrow-right-long text-gray-400 text-xs"></i>
+                        <span class="font-bold text-rofan-primary truncate">${t.t}</span>
+                    </div>
+                    <button onclick="removeTerm(${i})" class="text-gray-400 hover:text-red-500 px-2 transition-colors"><i class="fa-solid fa-trash-can text-sm"></i></button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function handleTermSubmit(e) {
+            e.preventDefault();
+            const s = document.getElementById('newTermSource').value.trim();
+            const t = document.getElementById('newTermTarget').value.trim();
+            if(s && t) {
+                const exists = termProfiles[activeProfile].findIndex(item => item.s === s);
+                if(exists !== -1) {
+                    termProfiles[activeProfile][exists].t = t;
+                } else {
+                    termProfiles[activeProfile].push({s, t});
+                }
+                document.getElementById('newTermSource').value = '';
+                document.getElementById('newTermTarget').value = '';
+                saveData();
+                renderTerms();
+                document.getElementById('newTermSource').focus();
+            }
+        }
+
+        function removeTerm(index) {
+            termProfiles[activeProfile].splice(index, 1);
+            saveData();
+            renderTerms();
+        }
+
+        function exportTerms() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(termProfiles, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "novel_dictionary.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importTerms(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    termProfiles = { ...termProfiles, ...imported };
+                    if(!termProfiles[activeProfile]) activeProfile = Object.keys(termProfiles)[0];
+                    renderProfileSelector();
+                    renderTerms();
+                    saveData();
+                    showToast('字典匯入成功');
+                } catch(err) {
+                    showToast('匯入失敗：非有效 JSON 格式', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Translation Engine Core ---
+
+        // 100% 強制術語後處理替換引擎 (長詞優先，杜絕子字串誤殺)
+        function applyGlossaryPostProcess(text) {
+            let processed = text;
+            const terms = termProfiles[activeProfile] || [];
+            if (terms.length === 0) return processed;
+
+            // 長度由大到小排序，防止 "莉" 先於 "莉莉安" 被取代
+            const sortedTerms = [...terms].sort((a, b) => b.s.length - a.s.length);
+            
+            sortedTerms.forEach(term => {
+                if (term.s && term.t) {
+                    // 安全脫模正則字元
+                    const escaped = term.s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                    const regex = new RegExp(escaped, 'gi');
+                    processed = processed.replace(regex, term.t);
+                }
+            });
+            return processed;
+        }
+
+        function buildPromptText(sourceText, isImprovement = false, prevContext = "") {
+            const isAuto = document.getElementById('autoGenreToggle').checked;
+            const genre = isAuto ? '自動偵測' : document.getElementById('genreDropdownText').innerText;
+            const targetLang = document.getElementById('sourceLanguage').options[document.getElementById('sourceLanguage').selectedIndex].text.split('➡️')[1].trim();
+            
+            let dictText = "";
+            if (termProfiles[activeProfile] && termProfiles[activeProfile].length > 0) {
+                dictText = termProfiles[activeProfile].map(t => `${t.s} -> ${t.t}`).join('\n');
+            }
+
+            let prompt = isImprovement ? 
+                "你是一個專業的小說編輯與翻譯家。請根據以下要求，重新潤飾、優化這段已經翻譯過的文本，修正不通順或語意錯誤的地方。請「只」輸出優化後的純文本，不要包含任何解釋、引號 or 多餘的話。\n\n" :
+                `你是一個專業的小說翻譯家。請將以下文本翻譯成${targetLang}。請「只」輸出翻譯後的純文本，不要包含任何解釋或多餘的話。\n\n`;
+
+            if (genre !== '自動偵測') prompt += `【文體風格】：${genre}小說風格。\n`;
+            
+            let opts = [];
+            if (apiSettings.opts.fluent) opts.push("消除翻譯腔，符合母語閱讀習慣");
+            if (apiSettings.opts.concise) opts.push("精簡冗言贅字，適當省略原文中不必要的代名詞");
+            if (apiSettings.opts.honorifics) opts.push("保留並強化尊卑階級與特定稱呼");
+            if (apiSettings.opts.lively) opts.push("對話活潑口語化，讓角色的對話貼近現代日常口語習慣，避免過於像在唸書的死板書面語");
+            if (opts.length > 0) prompt += `【翻譯要求】：\n- ${opts.join('\n- ')}\n`;
+
+            if (apiSettings.customPrompt) prompt += `【附加指示】：${apiSettings.customPrompt}\n`;
+            
+            if (dictText) prompt += `\n【強制詞彙表(Glossary)】(若遇到請務必替換)：\n${dictText}\n`;
+
+            if (prevContext) {
+                prompt += `\n【前文情境提示(僅供維持上下文連貫，請勿翻譯此段)】：\n...\n${prevContext}\n...\n`;
+            }
+
+            prompt += `\n【待處理文本】：\n${sourceText}`;
+            
+            return prompt;
+        }
+
+        async function fetchAPI(systemInstruction, userText) {
+            if (!apiSettings.key) {
+                throw new Error("請先在設定中輸入 API Key");
+            }
+
+            const maxRetries = 3;
+            let attempt = 0;
+            
+            while (attempt < maxRetries) {
+                try {
+                    let response;
+                    if (apiSettings.type === 'gemini') {
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiSettings.model}:generateContent?key=${apiSettings.key}`;
+                        const payload = {
+                            contents: [{ role: "user", parts: [{ text: userText }] }],
+                            systemInstruction: { parts: [{ text: systemInstruction }] },
+                            generationConfig: { temperature: 0.4 }
+                        };
+
+                        response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload),
+                            signal: abortController.signal
+                        });
+
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error?.message || "API 請求失敗");
+                        return data.candidates[0].content.parts[0].text;
+
+                    } else {
+                        const baseUrl = apiSettings.baseUrl || "https://api.openai.com";
+                        const url = `${baseUrl.replace(/\/+$/, '')}/v1/chat/completions`;
+                        const payload = {
+                            model: apiSettings.model,
+                            messages: [
+                                { role: "system", content: systemInstruction },
+                                { role: "user", content: userText }
+                            ],
+                            temperature: 0.4
+                        };
+
+                        response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${apiSettings.key}`
+                            },
+                            body: JSON.stringify(payload),
+                            signal: abortController.signal
+                        });
+
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error?.message || "API 請求失敗");
+                        return data.choices[0].message.content;
+                    }
+                } catch (error) {
+                    if (error.name === 'AbortError') throw error;
+                    attempt++;
+                    if (attempt >= maxRetries) throw error;
+                    await new Promise(r => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+                }
+            }
+        }
+
+        // 核心任務執行引擎
+        async function executeTranslation(text, isImprovement = false, isResume = false) {
+            if (!text.trim()) return;
+            
+            isTranslating = true;
+            abortController = new AbortController();
+            
+            const overlay = document.getElementById('loadingOverlay');
+            const cancelBtn = document.getElementById('cancelBtn');
+            const resumeBtn = document.getElementById('resumeBtn');
+            const textEl = document.getElementById('loadingText');
+            const progressContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            
+            textEl.innerText = isImprovement ? "AI 局部優化中..." : "解析與分段中...";
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            cancelBtn.classList.remove('hidden');
+            resumeBtn.classList.add('hidden'); // 隱藏續翻，除非出錯
+
+            try {
+                if (isImprovement) {
+                    const rawPrompt = buildPromptText(text, true);
+                    let sysPart = "你是一個專業小說翻譯輔助工具。";
+                    let userPart = rawPrompt;
+
+                    if (apiSettings.type === 'gemini') {
+                        const parts = rawPrompt.split('【待處理文本】：');
+                        sysPart = parts[0];
+                        userPart = parts[1] || text;
+                    }
+
+                    let result = await fetchAPI(sysPart, userPart);
+                    
+                    // 套用詞彙強制後處理
+                    if (apiSettings.opts.forceGlossary) {
+                        result = applyGlossaryPostProcess(result);
+                    }
+
+                    const range = selectedTextInfo.range;
+                    if(range) {
+                        range.deleteContents();
+                        range.insertNode(document.createTextNode(result));
+                        document.getElementById('quickImproveBtn').classList.add('hidden');
+                    } else {
+                        elResult.innerText = elResult.innerText.replace(selectedTextInfo.text, result);
+                    }
+                    showToast('段落優化完成');
+
+                } else {
+                    if (!isResume) {
+                        // 首次翻譯新任務，初始化任務區塊
+                        currentInputFullText = text;
+                        const targetChunkSize = apiSettings.chunkSize || 1200;
+                        currentChunksArray = splitTextIntoChunks(text, targetChunkSize);
+                        completedChunksResults = [];
+                        currentTranslationIndex = 0;
+                        elResult.innerText = ""; // 清空舊內容
+                    }
+                    
+                    progressContainer.classList.remove('hidden');
+                    progressText.classList.remove('hidden');
+                    
+                    let prevContext = "";
+
+                    // 從斷點 (currentTranslationIndex) 繼續精翻
+                    for (let i = currentTranslationIndex; i < currentChunksArray.length; i++) {
+                        currentTranslationIndex = i; // 即時記錄當前索引
+
+                        if (abortController.signal.aborted) {
+                            throw new DOMException("Aborted", "AbortError");
+                        }
+
+                        textEl.innerText = `精翻中... (第 ${i + 1} / ${currentChunksArray.length} 段)`;
+                        const percent = Math.round((i / currentChunksArray.length) * 100);
+                        progressBar.style.width = `${percent}%`;
+                        progressText.innerText = `${percent}%`;
+
+                        const rawPrompt = buildPromptText(currentChunksArray[i], false, prevContext);
+                        let sysPart = "你是一個專業小說翻譯輔助工具。";
+                        let userPart = rawPrompt;
+
+                        if (apiSettings.type === 'gemini') {
+                            const parts = rawPrompt.split('【待處理文本】：');
+                            sysPart = parts[0];
+                            userPart = parts[1] || currentChunksArray[i];
+                        }
+
+                        let chunkResult = await fetchAPI(sysPart, userPart);
+                        
+                        // 100% 強制術語後處理替換
+                        if (apiSettings.opts.forceGlossary) {
+                            chunkResult = applyGlossaryPostProcess(chunkResult);
+                        }
+
+                        completedChunksResults[i] = chunkResult.trim();
+                        
+                        // 動態即時呈現已翻好的拼接文本
+                        const renderedText = completedChunksResults.filter(r => r !== undefined).join("\n\n");
+                        elResult.innerText = renderedText;
+                        elResult.scrollTop = elResult.scrollHeight;
+
+                        // 保留上下文記憶
+                        if (apiSettings.opts.memory) {
+                            prevContext = currentChunksArray[i].slice(-300);
+                        }
+                    }
+
+                    // 100% 翻譯成功，清理斷點狀態
+                    currentTranslationIndex = 0; 
+                    progressBar.style.width = `100%`;
+                    progressText.innerText = `100%`;
+                    
+                    const finalResult = completedChunksResults.join("\n\n");
+                    const newHistoryItem = {
+                        id: Date.now(),
+                        date: new Date().toLocaleString(),
+                        preview: text.substring(0, 30) + '...',
+                        source: text,
+                        result: finalResult
+                    };
+                    
+                    translationHistory.unshift(newHistoryItem);
+                    if(translationHistory.length > 50) translationHistory.pop();
+                    
+                    // 異步儲存至 IndexedDB 
+                    await saveHistoryToDB(newHistoryItem);
+                    saveData();
+                    await renderHistory();
+                    
+                    showToast('全文翻譯完成！');
+                }
+
+            } catch (error) {
+                if (error.name === 'AbortError' || error.message === 'Aborted') {
+                    showToast('已暫停作業，已翻譯部分已安全暫存。', 'error');
+                    resumeBtn.classList.remove('hidden'); // 顯示中斷續傳按鈕
+                } else {
+                    showToast(`錯誤: ${error.message}，已保留當前進度。`, 'error');
+                    resumeBtn.classList.remove('hidden'); // 顯示中斷續傳按鈕
+                }
+            } finally {
+                isTranslating = false;
+                cancelBtn.classList.add('hidden');
+                // 如果沒有出錯且全部翻完，才關閉 Loading 遮罩
+                if (currentTranslationIndex === 0 || currentTranslationIndex >= currentChunksArray.length) {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                    setTimeout(() => {
+                        progressContainer.classList.add('hidden');
+                        progressText.classList.add('hidden');
+                    }, 1000);
+                }
+            }
+        }
+
+        function translateNovel() {
+            const text = elSource.value;
+            if(!text) {
+                showToast('請先輸入原文', 'error');
+                return;
+            }
+            executeTranslation(text, false, false);
+            
+            if(document.getElementById('autoGenreToggle').checked) {
+                const badge = document.getElementById('detectedGenreBadge');
+                badge.innerText = "已識別: " + (text.includes('システム') || text.includes('狀態窗') ? '系統流' : '羅曼奇幻');
+                badge.classList.remove('hidden');
+            }
+        }
+
+        // 觸發斷點續傳
+        function resumeTranslation() {
+            if (currentChunksArray.length > 0 && currentTranslationIndex < currentChunksArray.length) {
+                executeTranslation(currentInputFullText, false, true);
+            } else {
+                showToast("無可續傳的任務進度", "error");
+            }
+        }
+
+        function improveSelection() {
+            if(selectedTextInfo.text && selectedTextInfo.type === 'result') {
+                executeTranslation(selectedTextInfo.text, true);
+            }
+        }
+
+        function cancelAction() {
+            if (abortController) {
+                abortController.abort();
+            }
+        }
+
+        // --- History ---
+        async function renderHistory() {
+            const list = document.getElementById('historyList');
+            list.innerHTML = '';
+            
+            // 從 IndexedDB 載入最新歷史紀錄
+            try {
+                const dbHistory = await loadHistoryFromDB();
+                if(dbHistory && dbHistory.length > 0) {
+                    translationHistory = dbHistory.sort((a,b) => b.id - a.id);
+                }
+            } catch(e) {
+                console.warn("IndexedDB error during renderHistory: ", e);
+            }
+
+            if(translationHistory.length === 0) {
+                list.innerHTML = '<div class="text-sm text-gray-500 text-center py-4">無歷史紀錄</div>';
+                return;
+            }
+
+            translationHistory.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm cursor-pointer hover:border-rofan-primary transition-colors text-left';
+                div.onclick = () => loadHistoryItem(item.id);
+                div.innerHTML = `
+                    <div class="text-[10px] text-gray-400 mb-1">${item.date}</div>
+                    <div class="text-sm text-gray-700 dark:text-gray-300 truncate">${item.preview}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function loadHistoryItem(id) {
+            const item = translationHistory.find(h => h.id === id);
+            if(item) {
+                elSource.value = item.source;
+                elResult.innerText = item.result;
+                handleInput();
+                if(window.innerWidth < 1024) toggleSidebar();
+                showToast('已載入歷史紀錄');
+            }
+        }
+
+        async function clearHistory() {
+            if(confirm('確定要清空所有歷史紀錄嗎？')) {
+                translationHistory = [];
+                try {
+                    await clearHistoryFromDB();
+                } catch(e) {}
+                localStorage.removeItem('rt_history');
+                saveData();
+                await renderHistory();
+            }
+        }
+
+        function exportAllHistory(mode) {
+            if(translationHistory.length === 0) {
+                showToast('無歷史紀錄可匯出', 'error');
+                return;
+            }
+
+            if(mode === 'merged') {
+                let content = "";
+                [...translationHistory].reverse().forEach((item, index) => {
+                    content += `========== 段落 ${index + 1} ==========\n`;
+                    content += `${item.result}\n\n`;
+                });
+                downloadTextFile(content, "novel_translation_merged.txt");
+            } else {
+                let content = JSON.stringify(translationHistory.map(h => ({date: h.date, result: h.result})), null, 2);
+                downloadTextFile(content, "novel_translation_separate.json");
+            }
+            closeModal('exportHistoryModal');
+        }
+
+        // --- Utils ---
+        function downloadTranslation() {
+            const text = elResult.innerText;
+            if(!text || text.includes('翻譯結果將顯示於此')) {
+                showToast('無翻譯結果可下載', 'error');
+                return;
+            }
+            downloadTextFile(text, "translated_chapter.txt");
+        }
+
+        function downloadTextFile(content, filename) {
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function copyTranslation() {
+            const text = elResult.innerText;
+            if(!text || text.includes('翻譯結果將顯示於此')) return;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('已複製到剪貼簿');
+            }).catch(() => {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast('已複製到剪貼簿');
+                } catch (err) {
+                    showToast('複製失敗', 'error');
+                }
+                document.body.removeChild(textArea);
+            });
+        }
+
+        // --- TTS Engine ---
+        function toggleTTS() {
+            const text = elResult.innerText;
+            if (!text || text.includes('翻譯結果將顯示於此')) return;
+            
+            const btn = document.getElementById('ttsBtn');
+            const icon = btn.querySelector('i');
+
+            if (isPlayingTTS) {
+                window.speechSynthesis.cancel();
+                isPlayingTTS = false;
+                icon.className = 'fa-solid fa-volume-high';
+                btn.classList.remove('text-rofan-primary', 'animate-pulse');
+            } else {
+                ttsUtterance = new SpeechSynthesisUtterance(text);
+                const voices = window.speechSynthesis.getVoices();
+                const zhVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('cmn'));
+                if (zhVoice) ttsUtterance.voice = zhVoice;
+                
+                ttsUtterance.rate = 1.1;
+                
+                ttsUtterance.onend = () => {
+                    isPlayingTTS = false;
+                    icon.className = 'fa-solid fa-volume-high';
+                    btn.classList.remove('text-rofan-primary', 'animate-pulse');
+                };
+
+                window.speechSynthesis.speak(ttsUtterance);
+                isPlayingTTS = true;
+                icon.className = 'fa-solid fa-stop';
+                btn.classList.add('text-rofan-primary', 'animate-pulse');
+            }
+        }
+        
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices();
+        };
+
+    </script>
+</body>
+</html>
