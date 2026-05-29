@@ -374,7 +374,7 @@
                             <button onclick="deleteSelectedKey()" type="button" class="px-2.5 py-1.5 bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg text-xs transition-colors" title="刪除選取的金鑰"><i class="fa-solid fa-trash-can"></i></button>
                         </div>
                         <div class="flex gap-2">
-                            <input type="password" id="apiKeyInput" placeholder="在此輸入新的 API Key..." class="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-sm rounded-lg px-3 py-2 font-mono focus:ring-1 focus:ring-blue-500 outline-none transition-colors">
+                            <input type="password" id="apiKeyInput" placeholder="可持續輸入多組 API Key 備用..." class="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-sm rounded-lg px-3 py-2 font-mono focus:ring-1 focus:ring-blue-500 outline-none transition-colors">
                             <button onclick="rememberCurrentKey()" type="button" class="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400 rounded-lg text-xs font-bold transition-colors whitespace-nowrap">記憶</button>
                         </div>
                     </div>
@@ -395,6 +395,7 @@
                         <span class="text-rofan-primary font-bold underline cursor-pointer" onclick="selectModelShortcut('gemini-2.5-flash')">2.5-flash (極速免費)</span> │ 
                         <span class="text-rofan-primary font-bold underline cursor-pointer" onclick="selectModelShortcut('gemini-2.5-pro')">2.5-pro (極致品質)</span> │ 
                         <span class="text-rofan-primary font-bold underline cursor-pointer" onclick="selectModelShortcut('gemini-1.5-pro')">1.5-pro (經典Pro大腦)</span>
+                        <br>💡 長文翻譯秘訣：請新增 2~3 組免費金鑰於管理簿中，遇流量限制時系統將自動無縫切換！
                     </p>
                 </div>
 
@@ -2089,13 +2090,16 @@
 
                             } catch (error) {
                                 console.warn(`分段 ${i + 1} 翻譯異常:`, error.message);
-                                const isRateLimit = error.message.toLowerCase().includes("quota") || 
-                                                    error.message.toLowerCase().includes("limit") || 
-                                                    error.message.toLowerCase().includes("429") || 
-                                                    error.message.toLowerCase().includes("too many requests");
+                                const errorMsg = error.message.toLowerCase();
+                                const isRateLimit = errorMsg.includes("quota") || 
+                                                    errorMsg.includes("limit") || 
+                                                    errorMsg.includes("429") || 
+                                                    errorMsg.includes("exhausted") || 
+                                                    errorMsg.includes("too many requests");
 
                                 if (isRateLimit) {
-                                    if (keysCount > 1 && currentKeyAttempts < keysCount - 1) {
+                                    // 方案三：金鑰自動無縫輪替 (若有多組金鑰，優先嘗試輪替)
+                                    if (keysCount > 1 && currentKeyAttempts < keysCount) {
                                         rotateApiKey();
                                         currentKeyAttempts++;
                                         showToast(`⚠️ 觸發頻率限制，已自動切換至下一組金鑰重試...`, 'info');
@@ -2103,11 +2107,29 @@
                                         continue;
                                     }
 
+                                    // 方案一：智慧動態讀秒休眠 (精準抓取 Google 要求等待的秒數)
                                     if (retryCount < maxRetries) {
                                         retryCount++;
-                                        const backoffTime = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
-                                        textEl.innerText = `⏳ 流量限制超載，背景休眠中... (${Math.round(backoffTime/1000)}秒後重試)`;
+                                        let backoffTime = 0;
+                                        
+                                        // 嘗試從 Google 的報錯中精準抓取 "Please retry in X.XXXXs"
+                                        const retryMatch = error.message.match(/retry in\s*([\d.]+)\s*s/i);
+                                        if (retryMatch && retryMatch[1]) {
+                                            // 解析秒數並加上 1.5 秒的緩衝容錯時間
+                                            backoffTime = (parseFloat(retryMatch[1]) * 1000) + 1500; 
+                                        } else {
+                                            // 若無法抓取，則退回標準指數退避休眠
+                                            backoffTime = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+                                        }
+
+                                        // 安全閥：最低休眠 2 秒，最高休眠 60 秒
+                                        if (backoffTime < 2000) backoffTime = 2000;
+                                        if (backoffTime > 60000) backoffTime = 60000;
+                                        
+                                        textEl.innerText = `⏳ 流量超載，背景精準休眠中... (約 ${Math.ceil(backoffTime/1000)} 秒後重試)`;
                                         await new Promise(r => setTimeout(r, backoffTime));
+                                        
+                                        currentKeyAttempts = 0; // 休眠後重置金鑰嘗試次數，讓下一輪可以再次輪替
                                         continue;
                                     }
                                 }
